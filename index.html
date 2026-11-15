@@ -1,1 +1,1072 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sabkuch - Short Video App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Appwrite SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/appwrite@13.0.1"></script>
+    
+    <style>
+        /* (पिछला सारा CSS वैसा ही है, स्पेस बचाने के लिए यहाँ संक्षिप्त रखा गया है। पूरा CSS पिछले कोड में है) */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #000; color: #fff; overflow: hidden; display: flex; justify-content: center; }
+        .app-container { width: 100%; max-width: 450px; height: 100vh; position: relative; background: #111; display: flex; flex-direction: column; }
+        .topbar { width: 100%; height: auto; padding: 12px 16px; background: linear-gradient(90deg, #ff0050, #ff5e00, #8a2be2); color: white; position: fixed; top: 0; max-width: 450px; z-index: 100; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .topbar h1 { font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+        .loadbar-container { width: 100%; height: 3px; background: rgba(255,255,255,0.2); position: fixed; top: 50px; max-width: 450px; z-index: 101; }
+        .loadbar-progress { height: 100%; width: 0%; background: #00f2fe; transition: width 0.3s linear; }
+        .pull-refresh-indicator { position: fixed; top: 53px; left: 50%; transform: translateX(-50%) translateY(-60px); background: rgba(0, 242, 254, 0.9); color: #000; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; z-index: 102; opacity: 0; transition: transform 0.3s ease, opacity 0.3s ease; }
+        .pull-refresh-indicator.visible { opacity: 1; }
+        .pull-refresh-indicator.refreshing i { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .videos-lists, .saved-videos-list { width: 100%; height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
+        .videos-lists::-webkit-scrollbar, .saved-videos-list::-webkit-scrollbar { display: none; }
+        .video-item { width: 100%; height: 100vh; scroll-snap-align: start; position: relative; background: #000; display: flex; justify-content: center; align-items: center; }
+        video { width: 100%; height: 100%; object-fit: cover; cursor: pointer; pointer-events: none; }
+        .video-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; cursor: pointer; }
+        video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none !important; }
+        .play-pause-icon { position: absolute; font-size: 60px; color: rgba(255, 255, 255, 0.8); pointer-events: none; opacity: 0; transition: opacity 0.2s; text-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 6; }
+        .video-info { position: absolute; bottom: 80px; left: 15px; right: 85px; z-index: 10; text-shadow: 1px 1px 4px rgba(0,0,0,0.8); }
+        .user-id-wrapper { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .user-id { font-weight: bold; font-size: 16px; color: #ffde59; }
+        .follow-btn { background: #ff0050; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px; }
+        .follow-btn:active { transform: scale(0.95); }
+        .follow-btn.following { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); }
+        .video-title { font-size: 14px; line-height: 1.4; }
+        .circlebar { position: absolute; right: 12px; bottom: 100px; display: flex; flex-direction: column; gap: 15px; z-index: 20; }
+        .circle-btn { width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; transition: transform 0.2s, background 0.2s; }
+        .circle-btn:active { transform: scale(0.9); }
+        .circle-btn i { font-size: 18px; }
+        .circle-btn span { font-size: 10px; margin-top: 2px; }
+        .liked { color: #ff0050; border-color: #ff0050; background: rgba(255, 0, 80, 0.2); }
+        .saved { color: #00f2fe; border-color: #00f2fe; background: rgba(0, 242, 254, 0.2); }
+        .unsave-btn { color: #ffde59; border-color: #ffde59; background: rgba(255, 222, 89, 0.15); }
+        .bottombar { width: 100%; max-width: 450px; height: 60px; background: rgba(15, 15, 15, 0.95); border-top: 1px solid #333; position: fixed; bottom: 0; display: flex; justify-content: space-around; align-items: center; z-index: 150; }
+        .nav-btn { background: none; border: none; color: #aaa; display: flex; flex-direction: column; align-items: center; font-size: 11px; cursor: pointer; gap: 4px; width: 20%; }
+        .nav-btn i { font-size: 20px; }
+        .nav-btn.active { color: #fff; }
+        .upload-btn-special { background: linear-gradient(45deg, #ff0050, #00f2fe); color: white !important; padding: 8px 0; border-radius: 12px; width: 50px !important; margin-top: -10px; box-shadow: 0 4px 15px rgba(255, 0, 80, 0.4); }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 200; justify-content: center; align-items: center; }
+        .modal-content { background: #222; padding: 20px; border-radius: 15px; width: 90%; max-width: 380px; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; border: 1px solid #444; }
+        .modal-content h3 { text-align: center; color: #ffde59; }
+        .modal-content input, .modal-content select { padding: 12px; border-radius: 8px; border: 1px solid #555; background: #333; color: white; font-size: 14px; outline: none; }
+        .modal-content input:focus, .modal-content select:focus { border-color: #ff0050; }
+        .modal-content button { padding: 12px; border-radius: 8px; border: none; font-size: 15px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        .modal-content button:active { opacity: 0.8; }
+        .btn-primary { background: linear-gradient(90deg, #ff0050, #ff5e00); color: white; }
+        .btn-secondary { background: #444; color: white; }
+        .hidden-view { display: none !important; visibility: hidden !important; }
+        .saved-view, .user-view { position: absolute; top: 0; bottom: 60px; width: 100%; background: #000; z-index: 50; display: none; flex-direction: column; }
+        .saved-view.active, .user-view.active { display: flex; }
+        .saved-topbar, .user-topbar { width: 100%; padding: 12px 16px; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); color: white; position: absolute; top: 0; max-width: 450px; z-index: 110; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .saved-topbar .back-btn, .user-topbar .back-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; }
+        .saved-topbar h2, .user-topbar h2 { font-size: 17px; font-weight: bold; letter-spacing: 1px; }
+        .saved-topbar .count-badge { font-size: 11px; background: rgba(0, 242, 254, 0.2); color: #00f2fe; padding: 4px 10px; border-radius: 10px; border: 1px solid rgba(0, 242, 254, 0.4); }
+        .empty-saved { height: 100vh; display: flex; justify-content: center; align-items: center; color: #aaa; flex-direction: column; gap: 15px; text-align: center; padding: 20px; }
+        .empty-saved i { font-size: 50px; opacity: 0.5; }
+        .empty-saved button { margin-top: 10px; padding: 10px 20px; background: linear-gradient(90deg, #ff0050, #ff5e00); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .user-profile-content { flex: 1; overflow-y: auto; padding: 15px; padding-top: 70px; }
+        .user-profile-header { text-align: center; margin-bottom: 20px; }
+        .user-avatar { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(45deg, #ff0050, #00f2fe); display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-size: 32px; font-weight: bold; color: white; }
+        .user-name { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .user-email { font-size: 13px; color: #aaa; }
+        .user-stats { display: flex; justify-content: center; gap: 20px; margin-top: 15px; }
+        .user-stat { text-align: center; }
+        .user-stat-num { font-size: 18px; font-weight: bold; color: #00f2fe; }
+        .user-stat-label { font-size: 11px; color: #aaa; }
+        .user-tabs { display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 10px; }
+        .user-tab { background: #1a1a1a; border: 1px solid #333; color: #aaa; padding: 8px 16px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-size: 13px; }
+        .user-tab.active { background: linear-gradient(90deg, #ff0050, #ff5e00); color: white; border-color: transparent; }
+        .user-tab-content { display: none; }
+        .user-tab-content.active { display: block; }
+        .uploaded-video-item { display: flex; gap: 12px; background: #1a1a1a; padding: 10px; border-radius: 10px; margin-bottom: 12px; align-items: center; border: 1px solid #333; }
+        .uploaded-video-item video { width: 70px; height: 100px; object-fit: cover; border-radius: 6px; pointer-events: auto; }
+        .uploaded-video-info { flex: 1; }
+        .uploaded-video-info .video-title { font-size: 14px; color: #fff; margin-bottom: 5px; }
+        .uploaded-video-info .video-stats { font-size: 12px; color: #aaa; }
+        .video-actions { display: flex; gap: 8px; }
+        .video-action-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+        .video-action-btn.delete { color: #ff0050; border-color: rgba(255, 0, 80, 0.3); }
+        .settings-item { background: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 12px; border: 1px solid #333; }
+        .settings-item label { display: block; font-size: 14px; color: #fff; margin-bottom: 8px; }
+        .settings-item select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #555; background: #333; color: white; font-size: 14px; outline: none; }
+        .monetization-card { background: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 12px; border: 1px solid #333; }
+        .monetization-card h4 { font-size: 14px; color: #ffde59; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
+        .progress-bar { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #ff0050, #ff5e00); transition: width 0.3s ease; }
+        .monetization-status { text-align: center; padding: 15px; background: rgba(255, 222, 89, 0.1); border: 1px solid rgba(255, 222, 89, 0.3); border-radius: 10px; margin-top: 15px; }
+        .monetization-status i { font-size: 24px; color: #ffde59; margin-bottom: 8px; }
+        .monetization-status p { font-size: 13px; color: #ffde59; }
+        .login-form { display: flex; flex-direction: column; gap: 12px; }
+        .login-form input { padding: 12px; border-radius: 8px; border: 1px solid #555; background: #333; color: white; font-size: 14px; outline: none; }
+        .login-toggle { text-align: center; font-size: 13px; color: #aaa; }
+        .login-toggle a { color: #00f2fe; cursor: pointer; text-decoration: underline; }
+        .title-modal-info { background: rgba(0, 242, 254, 0.1); border: 1px solid rgba(0, 242, 254, 0.3); padding: 10px; border-radius: 8px; font-size: 13px; color: #00f2fe; text-align: center; }
+        .selected-file-info { background: rgba(255, 222, 89, 0.1); border: 1px solid rgba(255, 222, 89, 0.3); padding: 10px; border-radius: 8px; font-size: 12px; color: #ffde59; text-align: center; word-break: break-all; }
+        .search-modal-content { background: #222; padding: 20px; border-radius: 15px; width: 90%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; border: 1px solid #444; }
+        .search-input-wrapper { position: relative; }
+        .search-input-wrapper i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #aaa; }
+        .search-input-wrapper input { width: 100%; padding: 12px 12px 12px 40px; border-radius: 8px; border: 1px solid #555; background: #333; color: white; font-size: 14px; outline: none; }
+        .search-results { max-height: 400px; overflow-y: auto; }
+        .search-result-item { display: flex; gap: 10px; padding: 10px; background: #1a1a1a; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+        .search-result-item video { width: 60px; height: 80px; object-fit: cover; border-radius: 6px; pointer-events: none; }
+        .search-result-info { flex: 1; }
+        .search-result-info .user-id { font-size: 13px; color: #ffde59; margin-bottom: 4px; }
+        .search-result-info .video-title { font-size: 12px; color: #ddd; }
+        .no-results { text-align: center; color: #aaa; padding: 30px; }
+        .no-results i { font-size: 40px; margin-bottom: 10px; opacity: 0.5; }
+        .follow-toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.9); color: white; padding: 10px 20px; border-radius: 20px; font-size: 13px; z-index: 300; opacity: 0; transition: opacity 0.3s; border: 1px solid rgba(255, 0, 80, 0.5); }
+        .follow-toast.show { opacity: 1; }
+        .loading-spinner { text-align: center; padding: 30px; color: #aaa; }
+        .loading-spinner i { font-size: 30px; animation: spin 1s linear infinite; }
+    </style>
+</head>
+<body>
 
+<div class="app-container">
+    <div class="topbar">
+        <h1>sabkuch</h1>
+        <span style="font-size: 11px; background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2);">Cloud DB Active</span>
+    </div>
+
+    <div class="loadbar-container">
+        <div class="loadbar-progress" id="loadbar"></div>
+    </div>
+
+    <div class="pull-refresh-indicator" id="pullRefreshIndicator">
+        <i class="fas fa-sync-alt"></i>
+        <span id="pullRefreshText">नया फीड लोड हो रहा है...</span>
+    </div>
+
+    <div class="follow-toast" id="followToast"></div>
+    <div class="videos-lists" id="videos_lists"></div>
+
+    <div class="saved-view" id="savedView">
+        <div class="saved-topbar">
+            <button type="button" class="back-btn" id="backButton"><i class="fas fa-arrow-left"></i></button>
+            <h2>Saved Videos</h2>
+            <span class="count-badge" id="savedCount">0 videos</span>
+        </div>
+        <div class="saved-videos-list" id="savedVideosList"></div>
+    </div>
+
+    <div class="user-view" id="userView">
+        <div class="user-topbar">
+            <button type="button" class="back-btn" id="userBackButton"><i class="fas fa-arrow-left"></i></button>
+            <h2>Profile</h2>
+            <span></span>
+        </div>
+        <div class="user-profile-content" id="userProfileContent"></div>
+    </div>
+
+    <div class="bottombar">
+        <button type="button" class="nav-btn active" id="homeBtn"><i class="fas fa-home"></i><span>Home</span></button>
+        <button type="button" class="nav-btn" id="searchBtn"><i class="fas fa-search"></i><span>Search</span></button>
+        <button type="button" class="nav-btn upload-btn-special" id="uploadBtn"><i class="fas fa-plus"></i></button>
+        <button type="button" class="nav-btn" id="userBtn"><i class="fas fa-user"></i><span>User</span></button>
+        <button type="button" class="nav-btn" id="savedBtn"><i class="fas fa-bookmark"></i><span>Saved</span></button>
+    </div>
+</div>
+
+<input type="file" id="hiddenVideoInput" accept="video/*" style="display: none;">
+
+<div class="modal" id="searchModal">
+    <div class="search-modal-content">
+        <h3><i class="fas fa-search"></i> वीडियो खोजें</h3>
+        <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="टाइटल या UserID से खोजें..." autocomplete="off">
+        </div>
+        <div class="search-results" id="searchResults">
+            <div class="no-results"><i class="fas fa-info-circle"></i><p>खोजने के लिए ऊपर टाइप करें</p></div>
+        </div>
+        <button type="button" class="btn-secondary" id="closeSearchBtn">बंद करें</button>
+    </div>
+</div>
+
+<div class="modal" id="titleModal">
+    <div class="modal-content">
+        <h3>वीडियो का टाइटल</h3>
+        <div class="title-modal-info"><i class="fas fa-user"></i> आपका Username: <strong id="displayUsername">@username</strong></div>
+        <div class="selected-file-info"><i class="fas fa-video"></i> <span id="selectedFileName">कोई फ़ाइल नहीं चुनी गई</span></div>
+        <input type="text" id="inputTitle" placeholder="वीडियो का टाइटल लिखें..." required>
+        <button type="button" class="btn-primary" id="publishBtn">पब्लिश करें</button>
+        <button type="button" class="btn-secondary" id="cancelTitleBtn">रद्द करें</button>
+    </div>
+</div>
+
+<div class="modal" id="loginModal">
+    <div class="modal-content">
+        <h3 id="loginModalTitle">Login करें</h3>
+        <div class="login-form">
+            <input type="text" id="loginUsername" placeholder="Username" required>
+            <input type="email" id="loginEmail" placeholder="Email" required>
+            <input type="password" id="loginPassword" placeholder="Password" required>
+            <button type="button" class="btn-primary" id="loginSubmitBtn">Login</button>
+            <div class="login-toggle">
+                <span id="loginToggleText">Account नहीं है?</span>
+                <a id="loginToggleLink">Signup करें</a>
+            </div>
+            <button type="button" class="btn-secondary" id="loginCancelBtn">रद्द करें</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="editVideoModal">
+    <div class="modal-content">
+        <h3>वीडियो Edit करें</h3>
+        <input type="text" id="editVideoTitle" placeholder="नया टाइटल" required>
+        <button type="button" class="btn-primary" id="editVideoSaveBtn">सेव करें</button>
+        <button type="button" class="btn-secondary" id="editVideoCancelBtn">रद्द करें</button>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 🚀 APPWRITE CONFIGURATION (अपनी IDs यहाँ डालें)
+    // ==========================================
+    const APPWRITE_ENDPOINT = 'https://cloud.appwrite.io/v1';
+    const APPWRITE_PROJECT_ID = '6aa2ebbf000296878b87'; // ✅ आपकी Project ID
+    
+    // ⚠️ Appwrite Console > Databases > अपनी DB के Settings में "Database ID" कॉपी करके यहाँ डालें
+    const DATABASE_ID = '6aa2ecdd0037d1cdddcd';   
+    const TABLE_ID = '6af981f9002567f02561';                    // ✅ आपकी Single Table का ID/Name
+    const BUCKET_ID = '6aa2f5a00028668aa537';                    // ✅ Storage Bucket का ID
+
+    // Appwrite SDK initialize
+    const client = new Appwrite.Client();
+    client.setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
+
+    const databases = new Appwrite.Databases(client);
+    const storage = new Appwrite.Storage(client); // ✅ Storage SDK जोड़ा गया
+
+    // ==========================================
+    // GLOBAL VARIABLES
+    // ==========================================
+    let currentUser = null;
+    let isLoginMode = true;
+    let editingVideoId = null;
+    let pendingVideoFile = null;
+    let homeObserver = null;
+    let followedUsers = new Set();
+
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
+    async function init() {
+        try {
+            await loadFollowedUsers();
+            checkLoggedInUser();
+            await renderVideos();
+        } catch (error) {
+            console.error("Initialization error:", error);
+            alert("Appwrite से कनेक्ट करने में त्रुटि हुई। कृपया DATABASE_ID चेक करें।");
+        }
+    }
+
+    function checkLoggedInUser() {
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            currentUser = JSON.parse(savedUser);
+            document.getElementById('displayUsername').innerText = '@' + currentUser.username;
+        }
+    }
+
+    // ==========================================
+    // DATABASE OPERATIONS (Single Table with 'type')
+    // ==========================================
+    async function loadFollowedUsers() {
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                Appwrite.Query.equal('type', 'follow')
+            ]);
+            followedUsers = new Set();
+            response.documents.forEach(f => {
+                if (f.isFollowing) followedUsers.add(f.userId);
+            });
+        } catch (error) {
+            console.error("Error loading follows:", error);
+        }
+    }
+
+    async function renderVideos(filterText = "") {
+        const container = document.getElementById("videos_lists");
+        container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner"></i><p>लोड हो रहा है...</p></div>';
+
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                Appwrite.Query.equal('type', 'video'),
+                Appwrite.Query.orderDesc('timestamp'),
+                Appwrite.Query.limit(100)
+            ]);
+
+            let videos = response.documents;
+            if (filterText) {
+                const lowerFilter = filterText.toLowerCase();
+                videos = videos.filter(v => v.userId.toLowerCase().includes(lowerFilter) || v.title.toLowerCase().includes(lowerFilter));
+            }
+
+            if (videos.length === 0) {
+                container.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#aaa; flex-direction:column; gap:10px;"><i class="fas fa-video-slash" style="font-size:40px;"></i><span>कोई वीडियो नहीं मिला</span></div>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            videos.forEach(video => {
+                const videoItem = document.createElement("div");
+                videoItem.className = "video-item";
+                videoItem.innerHTML = createVideoItemHTML(video, false);
+                container.appendChild(videoItem);
+            });
+
+            setupIntersectionObserver(container, 'home');
+        } catch (error) {
+            console.error("Error loading videos:", error);
+            container.innerHTML = '<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#aaa;"><p>वीडियो लोड करने में त्रुटि हुई</p></div>';
+        }
+    }
+
+    function createVideoItemHTML(video, isSavedView = false) {
+        const src = video.videoUrl;
+        const saveButtonHTML = isSavedView 
+            ? `<div class="circle-btn unsave-btn" data-action="unsave" data-id="${video.$id}"><i class="fas fa-bookmark"></i><span>Unsave</span></div>`
+            : `<div class="circle-btn ${video.isSaved ? 'saved' : ''}" data-action="save" data-id="${video.$id}"><i class="fas fa-bookmark"></i><span>Save</span></div>`;
+
+        const isFollowing = followedUsers.has(video.userId);
+        const followBtnClass = isFollowing ? 'follow-btn following' : 'follow-btn';
+        const followBtnText = isFollowing ? '<i class="fas fa-check"></i> Following' : '<i class="fas fa-user-plus"></i> Follow';
+
+        return `
+            <video src="${src}" loop playsinline webkit-playsinline x5-playsinline controlsList="nodownload nofullscreen noremoteplayback" disablePictureInPicture disableremoteplayback oncontextmenu="return false;"></video>
+            <div class="video-overlay" data-action="toggle-play"></div>
+            <div class="play-pause-icon"><i class="fas fa-play"></i></div>
+            <div class="video-info">
+                <div class="user-id-wrapper">
+                    <div class="user-id">${video.userId}</div>
+                    <button type="button" class="${followBtnClass}" data-action="follow" data-userid="${video.userId}">${followBtnText}</button>
+                </div>
+                <div class="video-title">${video.title}</div>
+            </div>
+            <div class="circlebar">
+                <div class="circle-btn ${video.isLiked ? 'liked' : ''}" data-action="like" data-id="${video.$id}"><i class="fas fa-heart"></i><span>${video.likes}</span></div>
+                <div class="circle-btn" data-action="comment"><i class="fas fa-comment-dots"></i><span>${video.comments}</span></div>
+                <div class="circle-btn" data-action="share"><i class="fas fa-share"></i><span>${video.shares || 0}</span></div>
+                ${saveButtonHTML}
+            </div>
+        `;
+    }
+
+    // ==========================================
+    // EVENT HANDLERS
+    // ==========================================
+    document.addEventListener('click', async function(e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const action = target.dataset.action;
+        const id = target.dataset.id || null;
+        const userId = target.dataset.userid || null;
+
+        switch(action) {
+            case 'toggle-play': handleTogglePlay(target); break;
+            case 'like': await handleLike(target, id); break;
+            case 'save': await handleSave(target, id); break;
+            case 'unsave': await handleUnsave(target, id); break;
+            case 'follow': await handleFollow(target, userId); break;
+            case 'comment': alert('कमेंट्स फीचर जल्द आ रहा है!'); break;
+            case 'share': await handleShare(target, id); break;
+            case 'edit-video': openEditVideoModal(id); break;
+            case 'delete-video': await deleteVideo(id); break;
+            case 'unfollow': await handleUnfollow(target, userId); break;
+        }
+    });
+
+    function handleTogglePlay(overlay) {
+        const parent = overlay.parentElement;
+        const video = parent.querySelector("video");
+        const icon = parent.querySelector(".play-pause-icon i");
+        if (video.paused) {
+            video.play().catch(err => console.log("Play error:", err));
+            icon.className = "fas fa-play";
+            showIcon(parent.querySelector(".play-pause-icon"));
+        } else {
+            video.pause();
+            icon.className = "fas fa-pause";
+            showIcon(parent.querySelector(".play-pause-icon"));
+        }
+    }
+
+    function showIcon(iconElement) {
+        iconElement.style.opacity = "1";
+        setTimeout(() => { iconElement.style.opacity = "0"; }, 600);
+    }
+
+    function showFollowToast(message) {
+        const toast = document.getElementById('followToast');
+        toast.innerText = message;
+        toast.classList.add('show');
+        setTimeout(() => { toast.classList.remove('show'); }, 2000);
+    }
+
+    async function handleFollow(btn, userId) {
+        if (!currentUser) { alert("Follow करने के लिए पहले Login करें!"); return; }
+        if (userId === '@' + currentUser.username) { alert("आप खुद को follow नहीं कर सकते!"); return; }
+
+        const isCurrentlyFollowing = followedUsers.has(userId);
+        try {
+            if (isCurrentlyFollowing) {
+                const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [Appwrite.Query.equal('type', 'follow'), Appwrite.Query.equal('userId', userId)]);
+                if (response.documents.length > 0) {
+                    await databases.deleteDocument(DATABASE_ID, TABLE_ID, response.documents[0].$id);
+                }
+                followedUsers.delete(userId);
+                updateAllFollowButtons(userId, false);
+                showFollowToast(`आपने ${userId} को unfollow कर दिया`);
+            } else {
+                await databases.createDocument(DATABASE_ID, TABLE_ID, Appwrite.ID.unique(), {
+                    type: 'follow', userId: userId, isFollowing: true, timestamp: Date.now()
+                });
+                followedUsers.add(userId);
+                updateAllFollowButtons(userId, true);
+                showFollowToast(`आपने ${userId} को follow कर लिया ✓`);
+            }
+        } catch (error) {
+            console.error("Follow error:", error);
+            alert("Follow करने में त्रुटि हुई!");
+        }
+    }
+
+    function updateAllFollowButtons(userId, isFollowing) {
+        const allFollowBtns = document.querySelectorAll(`[data-action="follow"][data-userid="${userId}"]`);
+        allFollowBtns.forEach(btn => {
+            if (isFollowing) {
+                btn.classList.add('following');
+                btn.innerHTML = '<i class="fas fa-check"></i> Following';
+            } else {
+                btn.classList.remove('following');
+                btn.innerHTML = '<i class="fas fa-user-plus"></i> Follow';
+            }
+        });
+    }
+
+    async function handleUnfollow(btn, userId) {
+        if (!confirm(`क्या आप ${userId} को unfollow करना चाहते हैं?`)) return;
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [Appwrite.Query.equal('type', 'follow'), Appwrite.Query.equal('userId', userId)]);
+            if (response.documents.length > 0) {
+                await databases.deleteDocument(DATABASE_ID, TABLE_ID, response.documents[0].$id);
+            }
+            followedUsers.delete(userId);
+            updateAllFollowButtons(userId, false);
+            const countDisplay = document.getElementById('followingCountDisplay');
+            if (countDisplay) countDisplay.innerText = followedUsers.size;
+            showFollowToast(`आपने ${userId} को unfollow कर दिया`);
+            loadFollowingList();
+        } catch (error) {
+            console.error("Unfollow error:", error);
+        }
+    }
+
+    async function handleLike(btn, id) {
+        btn.classList.toggle("liked");
+        const span = btn.querySelector("span");
+        let count = parseInt(span.innerText);
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, id);
+            const newLikes = btn.classList.contains("liked") ? count + 1 : count - 1;
+            await databases.updateDocument(DATABASE_ID, TABLE_ID, id, { likes: newLikes, isLiked: btn.classList.contains("liked") });
+            span.innerText = newLikes;
+        } catch (error) { console.error("Like error:", error); }
+    }
+
+    async function handleSave(btn, id) {
+        btn.classList.toggle("saved");
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, id);
+            await databases.updateDocument(DATABASE_ID, TABLE_ID, id, { isSaved: btn.classList.contains("saved") });
+        } catch (error) { console.error("Save error:", error); }
+    }
+
+    async function handleUnsave(btn, id) {
+        if (!confirm("इस वीडियो को Saved लिस्ट से हटा दें?")) return;
+        try {
+            await databases.updateDocument(DATABASE_ID, TABLE_ID, id, { isSaved: false });
+            const videoItem = btn.closest('.video-item');
+            if (videoItem) {
+                const video = videoItem.querySelector('video');
+                if (video) video.pause();
+                videoItem.remove();
+            }
+            const remaining = document.querySelectorAll('#savedVideosList .video-item').length;
+            document.getElementById('savedCount').innerText = remaining + " videos";
+            if (remaining === 0) showSavedVideos();
+        } catch (error) { console.error("Unsave error:", error); }
+    }
+
+    async function handleShare(btn, id) {
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, id);
+            const span = btn.querySelector("span");
+            let count = parseInt(span.innerText) || 0;
+
+            if (navigator.share) {
+                await navigator.share({ title: video.title, text: video.title, url: video.videoUrl });
+                await databases.updateDocument(DATABASE_ID, TABLE_ID, id, { shares: count + 1 });
+                span.innerText = count + 1;
+            } else {
+                await navigator.clipboard.writeText(video.videoUrl);
+                alert("लिंक कॉपी हो गया!");
+            }
+        } catch (error) { console.error("Share error:", error); }
+    }
+
+    function setupIntersectionObserver(container, observerType = 'home') {
+        const videos = container.querySelectorAll(".video-item video");
+        const observer = new IntersectionObserver(async (entries) => {
+            for (const entry of entries) {
+                const video = entry.target;
+                if (observerType === 'home' && document.getElementById('videos_lists').classList.contains('hidden-view')) {
+                    video.pause();
+                    return;
+                }
+                if (entry.isIntersecting) {
+                    document.getElementById("loadbar").style.width = "100%";
+                    setTimeout(() => { document.getElementById("loadbar").style.width = "0%"; }, 400);
+                    video.play().catch(e => console.log("ऑटोप्ले ब्लाक्ड"));
+                    const videoId = video.closest('.video-item').querySelector('[data-id]')?.dataset.id;
+                    if (videoId) await incrementViews(videoId);
+                } else {
+                    video.pause();
+                    video.currentTime = 0;
+                }
+            }
+        }, { threshold: 0.6 });
+        videos.forEach(video => observer.observe(video));
+        if (observerType === 'home') homeObserver = observer;
+    }
+
+    async function incrementViews(videoId) {
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, videoId);
+            await databases.updateDocument(DATABASE_ID, TABLE_ID, videoId, { views: (video.views || 0) + 1 });
+        } catch (error) { console.error("Increment views error:", error); }
+    }
+
+    function pauseAllVideosIn(container) {
+        container.querySelectorAll('video').forEach(video => {
+            try { video.pause(); video.currentTime = 0; } catch (e) {}
+        });
+    }
+
+    async function showSavedVideos() {
+        try {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('savedBtn').classList.add('active');
+            const homeContainer = document.getElementById('videos_lists');
+            pauseAllVideosIn(homeContainer);
+            homeContainer.classList.add('hidden-view');
+            if (homeObserver) { homeObserver.disconnect(); homeObserver = null; }
+
+            const savedContainer = document.getElementById('savedVideosList');
+            savedContainer.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner"></i><p>लोड हो रहा है...</p></div>';
+            document.getElementById('savedView').classList.add('active');
+            history.pushState({ page: 'saved' }, '', '#saved');
+
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                Appwrite.Query.equal('type', 'video'),
+                Appwrite.Query.equal('isSaved', true),
+                Appwrite.Query.orderDesc('timestamp')
+            ]);
+
+            const savedVideos = response.documents;
+            document.getElementById('savedCount').innerText = savedVideos.length + " videos";
+
+            if (savedVideos.length === 0) {
+                savedContainer.innerHTML = `<div class="empty-saved"><i class="fas fa-bookmark"></i><p>आपने अभी तक कोई वीडियो सेव नहीं किया है।</p><button type="button" onclick="goHome()">वीडियो देखें</button></div>`;
+                return;
+            }
+
+            savedContainer.innerHTML = '';
+            savedVideos.forEach(video => {
+                const videoItem = document.createElement("div");
+                videoItem.className = "video-item";
+                videoItem.innerHTML = createVideoItemHTML(video, true);
+                savedContainer.appendChild(videoItem);
+            });
+            setupIntersectionObserver(savedContainer, 'saved');
+        } catch (error) { console.error("Error in showSavedVideos:", error); }
+    }
+
+    function goHome() {
+        try {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('homeBtn').classList.add('active');
+            pauseAllVideosIn(document.getElementById('savedView'));
+            document.getElementById('savedView').classList.remove('active');
+            document.getElementById('userView').classList.remove('active');
+            document.getElementById('videos_lists').classList.remove('hidden-view');
+            if (window.location.hash === '#saved' || window.location.hash === '#user') {
+                history.replaceState({ page: 'home' }, '', window.location.pathname);
+            }
+            renderVideos();
+        } catch (error) { console.error("Error in goHome:", error); }
+    }
+
+    window.addEventListener('popstate', function(event) {
+        if (document.getElementById('savedView').classList.contains('active') || document.getElementById('userView').classList.contains('active')) {
+            goHome();
+        }
+    });
+
+    document.getElementById('backButton').addEventListener('click', (e) => { e.preventDefault(); goHome(); });
+    document.getElementById('userBackButton').addEventListener('click', (e) => { e.preventDefault(); goHome(); });
+    document.getElementById('homeBtn').addEventListener('click', (e) => { e.preventDefault(); goHome(); });
+    document.getElementById('savedBtn').addEventListener('click', (e) => { e.preventDefault(); showSavedVideos(); });
+    document.getElementById('searchBtn').addEventListener('click', (e) => { e.preventDefault(); openSearchModal(); });
+    document.getElementById('uploadBtn').addEventListener('click', (e) => { e.preventDefault(); startUploadProcess(); });
+    document.getElementById('userBtn').addEventListener('click', (e) => { e.preventDefault(); showUserProfile(); });
+    document.getElementById('publishBtn').addEventListener('click', async (e) => { e.preventDefault(); await saveVideoToDB(); });
+    document.getElementById('cancelTitleBtn').addEventListener('click', (e) => { e.preventDefault(); closeTitleModal(); });
+    document.getElementById('hiddenVideoInput').addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            pendingVideoFile = e.target.files[0];
+            document.getElementById('selectedFileName').innerText = pendingVideoFile.name;
+            document.getElementById('titleModal').style.display = 'flex';
+            document.getElementById('inputTitle').focus();
+        }
+    });
+
+    function startUploadProcess() {
+        if (!currentUser) { alert("वीडियो अपलोड करने के लिए पहले Login करें!"); showUserProfile(); return; }
+        document.getElementById('hiddenVideoInput').click();
+    }
+
+    function closeTitleModal() {
+        document.getElementById('titleModal').style.display = 'none';
+        document.getElementById('inputTitle').value = '';
+        document.getElementById('selectedFileName').innerText = 'कोई फ़ाइल नहीं चुनी गई';
+        document.getElementById('hiddenVideoInput').value = '';
+        pendingVideoFile = null;
+    }
+
+    // ✅ FIX: Appwrite Storage का उपयोग करके वीडियो अपलोड करना
+    async function saveVideoToDB() {
+        const title = document.getElementById("inputTitle").value.trim();
+        if (!title) { alert("कृपया वीडियो का टाइटल लिखें!"); return; }
+        if (!pendingVideoFile) { alert("कोई वीडियो फ़ाइल नहीं चुनी गई!"); return; }
+
+        document.getElementById("loadbar").style.width = "30%";
+        document.getElementById("publishBtn").disabled = true;
+        document.getElementById("publishBtn").innerText = "अपलोड हो रहा है...";
+
+        try {
+            // Step 1: वीडियो फाइल को Appwrite Storage में upload करें
+            const file = await storage.createFile(
+                BUCKET_ID,
+                Appwrite.ID.unique(),
+                pendingVideoFile
+            );
+            document.getElementById("loadbar").style.width = "70%";
+
+            // Step 2: Storage से असली URL बनाएं
+            const videoUrl = storage.getFileView(BUCKET_ID, file.$id);
+            
+            // Step 3: Database में वीडियो का record save करें
+            await databases.createDocument(DATABASE_ID, TABLE_ID, Appwrite.ID.unique(), {
+                type: 'video',
+                userId: "@" + currentUser.username,
+                title: title,
+                videoUrl: videoUrl,
+                fileId: file.$id,
+                likes: 0, comments: 0, views: 0, shares: 0,
+                isLiked: false, isSaved: false,
+                uploadedBy: currentUser.$id || 'guest',
+                timestamp: Date.now()
+            });
+
+            document.getElementById("loadbar").style.width = "100%";
+            setTimeout(() => { 
+                document.getElementById("loadbar").style.width = "0%"; 
+                document.getElementById("publishBtn").disabled = false;
+                document.getElementById("publishBtn").innerText = "पब्लिश करें";
+            }, 500);
+            
+            closeTitleModal();
+            await renderVideos();
+            alert("✅ वीडियो सफलतापूर्वक Cloud में अपलोड हो गया!");
+        } catch (error) {
+            console.error("Upload error:", error);
+            alert("❌ वीडियो अपलोड नहीं हुआ!\n\nError: " + error.message + "\n\n(चेक करें: Bucket ID सही है और Permissions 'any' सेट हैं)");
+            document.getElementById("loadbar").style.width = "0%";
+            document.getElementById("publishBtn").disabled = false;
+            document.getElementById("publishBtn").innerText = "पब्लिश करें";
+        }
+    }
+
+    function openSearchModal() {
+        document.getElementById('searchModal').style.display = 'flex';
+        document.getElementById('searchInput').value = '';
+        document.getElementById('searchResults').innerHTML = `<div class="no-results"><i class="fas fa-info-circle"></i><p>खोजने के लिए ऊपर टाइप करें</p></div>`;
+        setTimeout(() => { document.getElementById('searchInput').focus(); }, 100);
+    }
+
+    function closeSearchModal() { document.getElementById('searchModal').style.display = 'none'; }
+    document.getElementById('closeSearchBtn').addEventListener('click', (e) => { e.preventDefault(); closeSearchModal(); });
+
+    document.getElementById('searchInput').addEventListener('input', async function(e) {
+        const query = e.target.value.trim().toLowerCase();
+        const resultsContainer = document.getElementById('searchResults');
+        if (!query) {
+            resultsContainer.innerHTML = `<div class="no-results"><i class="fas fa-info-circle"></i><p>खोजने के लिए ऊपर टाइप करें</p></div>`;
+            return;
+        }
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [Appwrite.Query.equal('type', 'video')]);
+            const filteredVideos = response.documents.filter(v => v.userId.toLowerCase().includes(query) || v.title.toLowerCase().includes(query));
+            
+            if (filteredVideos.length === 0) {
+                resultsContainer.innerHTML = `<div class="no-results"><i class="fas fa-search"></i><p>कोई वीडियो नहीं मिला</p></div>`;
+                return;
+            }
+            resultsContainer.innerHTML = '';
+            filteredVideos.forEach(video => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                item.innerHTML = `<video src="${video.videoUrl}" muted></video><div class="search-result-info"><div class="user-id">${video.userId}</div><div class="video-title">${video.title}</div></div>`;
+                resultsContainer.appendChild(item);
+            });
+        } catch (error) { console.error("Search error:", error); }
+    });
+
+    async function showUserProfile() {
+        if (!currentUser) { openLoginModal(); return; }
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('userBtn').classList.add('active');
+        const homeContainer = document.getElementById('videos_lists');
+        pauseAllVideosIn(homeContainer);
+        homeContainer.classList.add('hidden-view');
+        if (homeObserver) { homeObserver.disconnect(); homeObserver = null; }
+        document.getElementById('userView').classList.add('active');
+        history.pushState({ page: 'user' }, '', '#user');
+        await renderUserProfile();
+    }
+
+    async function renderUserProfile() {
+        const content = document.getElementById('userProfileContent');
+        const followingCount = followedUsers.size;
+        content.innerHTML = `
+            <div class="user-profile-header">
+                <div class="user-avatar">${currentUser.username.charAt(0).toUpperCase()}</div>
+                <div class="user-name">${currentUser.username}</div>
+                <div class="user-email">${currentUser.email}</div>
+                <div class="user-stats">
+                    <div class="user-stat"><div class="user-stat-num" id="followingCountDisplay">${followingCount}</div><div class="user-stat-label">Following</div></div>
+                </div>
+            </div>
+            <div class="user-tabs">
+                <div class="user-tab active" data-tab="videos">Uploaded Videos</div>
+                <div class="user-tab" data-tab="following">Following</div>
+                <div class="user-tab" data-tab="settings">Settings</div>
+                <div class="user-tab" data-tab="monetization">Money</div>
+                <div class="user-tab" data-tab="logout">Logout</div>
+            </div>
+            <div class="user-tab-content active" id="videosTab"><div id="uploadedVideosList"></div></div>
+            <div class="user-tab-content" id="followingTab"><div id="followingList"></div></div>
+            <div class="user-tab-content" id="settingsTab">
+                <div class="settings-item"><label>Video Quality</label><select id="videoQualitySetting"><option value="144">144p</option><option value="240">240p</option><option value="360" selected>360p</option><option value="720">720p</option><option value="1080">1080p</option></select></div>
+            </div>
+            <div class="user-tab-content" id="monetizationTab">
+                <div class="monetization-card"><h4><i class="fas fa-users"></i> Followers</h4><div class="progress-label"><span>Current: <strong id="followerCount">0</strong></span><span>Target: 2,000</span></div><div class="progress-bar"><div class="progress-fill" id="followerProgress" style="width: 0%"></div></div></div>
+                <div class="monetization-card"><h4><i class="fas fa-eye"></i> Views</h4><div class="progress-label"><span>Current: <strong id="viewCount">0</strong></span><span>Target: 1,000,000</span></div><div class="progress-bar"><div class="progress-fill" id="viewProgress" style="width: 0%"></div></div></div>
+                <div class="monetization-card"><h4><i class="fas fa-clock"></i> Watch Time</h4><div class="progress-label"><span>Current: <strong id="watchTimeCount">0</strong> hours</span><span>Target: 1,500 hours</span></div><div class="progress-bar"><div class="progress-fill" id="watchTimeProgress" style="width: 0%"></div></div></div>
+                <div class="monetization-status"><i class="fas fa-info-circle"></i><p>Monetization के लिए सभी targets पूरे करें</p></div>
+            </div>
+        `;
+
+        document.querySelectorAll('.user-tab').forEach(tab => {
+            tab.addEventListener('click', async function() {
+                const tabName = this.dataset.tab;
+                if (tabName === 'logout') {
+                    if (confirm("क्या आप वाकई Logout करना चाहते हैं?")) {
+                        localStorage.removeItem('currentUser');
+                        currentUser = null;
+                        goHome();
+                    }
+                    return;
+                }
+                document.querySelectorAll('.user-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.user-tab-content').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById(tabName + 'Tab').classList.add('active');
+                if (tabName === 'videos') await loadUploadedVideos();
+                else if (tabName === 'following') loadFollowingList();
+                else if (tabName === 'monetization') await loadMonetizationStats();
+            });
+        });
+        await loadUploadedVideos();
+    }
+
+    function loadFollowingList() {
+        const list = document.getElementById('followingList');
+        if (followedUsers.size === 0) {
+            list.innerHTML = `<div style="text-align:center; color:#aaa; padding: 30px;"><i class="fas fa-user-slash" style="font-size:40px; margin-bottom:15px; opacity:0.5;"></i><p>आपने अभी तक किसी को follow नहीं किया है।</p></div>`;
+            return;
+        }
+        list.innerHTML = '';
+        followedUsers.forEach(userId => {
+            const item = document.createElement('div');
+            item.className = 'uploaded-video-item';
+            item.innerHTML = `
+                <div style="width:50px; height:50px; border-radius:50%; background:linear-gradient(45deg, #ff0050, #00f2fe); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold; color:white; flex-shrink:0;">${userId.replace('@', '').charAt(0).toUpperCase()}</div>
+                <div class="uploaded-video-info"><div class="video-title">${userId}</div><div class="video-stats"><i class="fas fa-check-circle" style="color:#00f2fe;"></i> Following</div></div>
+                <button type="button" class="video-action-btn delete" data-action="unfollow" data-userid="${userId}" title="Unfollow"><i class="fas fa-user-minus"></i></button>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async function loadUploadedVideos() {
+        const list = document.getElementById('uploadedVideosList');
+        list.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner"></i><p>लोड हो रहा है...</p></div>';
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                Appwrite.Query.equal('type', 'video'),
+                Appwrite.Query.equal('uploadedBy', currentUser.$id || 'guest'),
+                Appwrite.Query.orderDesc('timestamp')
+            ]);
+            const videos = response.documents;
+            if (videos.length === 0) {
+                list.innerHTML = `<div style="text-align:center; color:#aaa; padding: 30px;"><i class="fas fa-video-slash" style="font-size:40px; margin-bottom:15px; opacity:0.5;"></i><p>आपने अभी तक कोई वीडियो अपलोड नहीं किया है।</p></div>`;
+                return;
+            }
+            list.innerHTML = '';
+            videos.forEach(video => {
+                const item = document.createElement('div');
+                item.className = 'uploaded-video-item';
+                item.innerHTML = `
+                    <video src="${video.videoUrl}" muted></video>
+                    <div class="uploaded-video-info"><div class="video-title">${video.title}</div><div class="video-stats"><i class="fas fa-eye"></i> ${video.views || 0} views &nbsp; <i class="fas fa-heart"></i> ${video.likes} likes</div></div>
+                    <div class="video-actions">
+                        <button type="button" class="video-action-btn" data-action="edit-video" data-id="${video.$id}" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="video-action-btn delete" data-action="delete-video" data-id="${video.$id}" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        } catch (error) {
+            console.error("Error loading uploaded videos:", error);
+            list.innerHTML = '<p style="text-align:center; color:#aaa;">वीडियो लोड करने में त्रुटि हुई</p>';
+        }
+    }
+
+    async function openEditVideoModal(videoId) {
+        editingVideoId = videoId;
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, videoId);
+            document.getElementById('editVideoTitle').value = video.title;
+            document.getElementById('editVideoModal').style.display = 'flex';
+        } catch (error) { console.error("Error loading video:", error); alert("वीडियो लोड करने में त्रुटि हुई!"); }
+    }
+
+    document.getElementById('editVideoSaveBtn').addEventListener('click', async function() {
+        const newTitle = document.getElementById('editVideoTitle').value.trim();
+        if (!newTitle) { alert("कृपया टाइटल लिखें!"); return; }
+        try {
+            await databases.updateDocument(DATABASE_ID, TABLE_ID, editingVideoId, { title: newTitle });
+            document.getElementById('editVideoModal').style.display = 'none';
+            await loadUploadedVideos();
+            alert("वीडियो अपडेट हो गया!");
+        } catch (error) { console.error("Update error:", error); alert("वीडियो अपडेट करने में त्रुटि हुई!"); }
+    });
+
+    document.getElementById('editVideoCancelBtn').addEventListener('click', function() {
+        document.getElementById('editVideoModal').style.display = 'none';
+    });
+
+    // ✅ FIX: डिलीट करते समय Storage से भी फाइल हटाना
+    async function deleteVideo(videoId) {
+        if (!confirm("क्या आप वाकई इस वीडियो को डिलीट करना चाहते हैं?")) return;
+        try {
+            const video = await databases.getDocument(DATABASE_ID, TABLE_ID, videoId);
+            
+            // पहले Storage से file हटाएं (अगर fileId मौजूद है)
+            if (video.fileId) {
+                try {
+                    await storage.deleteFile(BUCKET_ID, video.fileId);
+                } catch (e) { console.log("Storage delete error (might not exist):", e); }
+            }
+            
+            // फिर Database record हटाएं
+            await databases.deleteDocument(DATABASE_ID, TABLE_ID, videoId);
+            await loadUploadedVideos();
+            alert("वीडियो डिलीट हो गया!");
+        } catch (error) { 
+            console.error("Delete error:", error); 
+            alert("वीडियो डिलीट करने में त्रुटि हुई!");
+        }
+    }
+
+    async function loadMonetizationStats() {
+        try {
+            const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                Appwrite.Query.equal('type', 'video'),
+                Appwrite.Query.equal('uploadedBy', currentUser.$id || 'guest')
+            ]);
+            const videos = response.documents;
+            let totalViews = 0;
+            videos.forEach(v => { totalViews += (v.views || 0); });
+            const followers = Math.floor(totalViews / 10);
+            const watchTime = Math.floor(totalViews * 0.05);
+            document.getElementById('followerCount').innerText = followers;
+            document.getElementById('viewCount').innerText = totalViews.toLocaleString();
+            document.getElementById('watchTimeCount').innerText = watchTime;
+            document.getElementById('followerProgress').style.width = Math.min((followers / 2000) * 100, 100) + '%';
+            document.getElementById('viewProgress').style.width = Math.min((totalViews / 1000000) * 100, 100) + '%';
+            document.getElementById('watchTimeProgress').style.width = Math.min((watchTime / 1500) * 100, 100) + '%';
+        } catch (error) { console.error("Error loading monetization stats:", error); }
+    }
+
+    function openLoginModal() {
+        isLoginMode = true;
+        updateLoginModalUI();
+        document.getElementById('loginModal').style.display = 'flex';
+    }
+
+    function updateLoginModalUI() {
+        if (isLoginMode) {
+            document.getElementById('loginModalTitle').innerText = 'Login करें';
+            document.getElementById('loginSubmitBtn').innerText = 'Login';
+            document.getElementById('loginToggleText').innerText = 'Account नहीं है?';
+            document.getElementById('loginToggleLink').innerText = 'Signup करें';
+        } else {
+            document.getElementById('loginModalTitle').innerText = 'Signup करें';
+            document.getElementById('loginSubmitBtn').innerText = 'Signup';
+            document.getElementById('loginToggleText').innerText = 'पहले से Account है?';
+            document.getElementById('loginToggleLink').innerText = 'Login करें';
+        }
+    }
+
+    document.getElementById('loginToggleLink').addEventListener('click', function() {
+        isLoginMode = !isLoginMode;
+        updateLoginModalUI();
+    });
+
+    document.getElementById('loginCancelBtn').addEventListener('click', function() {
+        document.getElementById('loginModal').style.display = 'none';
+    });
+
+    document.getElementById('loginSubmitBtn').addEventListener('click', async function() {
+        const username = document.getElementById('loginUsername').value.trim();
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value.trim();
+
+        if (!username || !email || !password) { alert("कृपया सभी फ़ील्ड भरें!"); return; }
+
+        try {
+            if (isLoginMode) {
+                const response = await databases.listDocuments(DATABASE_ID, TABLE_ID, [
+                    Appwrite.Query.equal('type', 'user'),
+                    Appwrite.Query.equal('email', email),
+                    Appwrite.Query.equal('password', password)
+                ]);
+                if (response.documents.length > 0) {
+                    currentUser = response.documents[0];
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    document.getElementById('loginModal').style.display = 'none';
+                    document.getElementById('displayUsername').innerText = '@' + currentUser.username;
+                    await showUserProfile();
+                } else {
+                    alert("गलत Email या Password!");
+                }
+            } else {
+                const newUser = await databases.createDocument(DATABASE_ID, TABLE_ID, Appwrite.ID.unique(), {
+                    type: 'user', username: username, email: email, password: password, timestamp: Date.now()
+                });
+                currentUser = newUser;
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('displayUsername').innerText = '@' + currentUser.username;
+                await showUserProfile();
+                alert("Account बन गया!");
+            }
+        } catch (error) {
+            console.error("Login/Signup error:", error);
+            alert("Login/Signup करने में त्रुटि हुई! Console चेक करें।");
+        }
+    });
+
+    // Pull-to-Refresh Logic
+    let startY = 0, isPulling = false, isRefreshing = false;
+    const PULL_THRESHOLD = 80;
+    const videosList = document.getElementById("videos_lists");
+    const pullIndicator = document.getElementById("pullRefreshIndicator");
+    const pullText = document.getElementById("pullRefreshText");
+
+    videosList.addEventListener("touchstart", function(e) {
+        if (videosList.scrollTop === 0 && !isRefreshing) { startY = e.touches[0].clientY; isPulling = true; }
+    });
+
+    videosList.addEventListener("touchmove", function(e) {
+        if (!isPulling || isRefreshing) return;
+        const currentY = e.touches[0].clientY;
+        const pullDistance = currentY - startY;
+        if (pullDistance > 0) {
+            const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+            pullIndicator.style.transform = `translateX(-50%) translateY(${-60 + (pullDistance * 0.8)}px)`;
+            pullIndicator.classList.add("visible");
+            document.getElementById("loadbar").style.width = (progress * 100) + "%";
+            pullText.innerText = pullDistance >= PULL_THRESHOLD ? "छोड़ें रिफ्रेश करने के लिए" : "नीचे खींचें नया फीड लाने के लिए";
+        }
+    });
+
+    videosList.addEventListener("touchend", async function(e) {
+        if (!isPulling || isRefreshing) return;
+        const endY = e.changedTouches[0].clientY;
+        const pullDistance = endY - startY;
+        if (pullDistance >= PULL_THRESHOLD) {
+            isRefreshing = true;
+            pullIndicator.classList.add("refreshing");
+            pullText.innerText = "नया फीड लोड हो रहा है...";
+            document.getElementById("loadbar").style.width = "100%";
+            setTimeout(async () => {
+                await addNewSampleVideos();
+                pullIndicator.style.transform = "translateX(-50%) translateY(-60px)";
+                pullIndicator.classList.remove("visible", "refreshing");
+                document.getElementById("loadbar").style.width = "0%";
+                await renderVideos();
+                isRefreshing = false;
+            }, 1500);
+        } else {
+            pullIndicator.style.transform = "translateX(-50%) translateY(-60px)";
+            pullIndicator.classList.remove("visible");
+            document.getElementById("loadbar").style.width = "0%";
+        }
+        isPulling = false;
+    });
+
+    async function addNewSampleVideos() {
+        const newSampleVideos = [
+            { type: 'video', userId: "@travel_diaries", title: "Sunset at Beach 🌅 #travel", videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4", likes: Math.floor(Math.random() * 500), comments: Math.floor(Math.random() * 100), views: Math.floor(Math.random() * 2000), shares: 0, isLiked: false, isSaved: false, uploadedBy: null, timestamp: Date.now() },
+            { type: 'video', userId: "@foodie_life", title: "Delicious Pizza Recipe 🍕 #food", videoUrl: "https://www.w3schools.com/html/movie.mp4", likes: Math.floor(Math.random() * 500), comments: Math.floor(Math.random() * 100), views: Math.floor(Math.random() * 2000), shares: 0, isLiked: false, isSaved: false, uploadedBy: null, timestamp: Date.now() }
+        ];
+        try {
+            for (const video of newSampleVideos) {
+                await databases.createDocument(DATABASE_ID, TABLE_ID, Appwrite.ID.unique(), video);
+            }
+        } catch (error) { console.error("Error adding sample videos:", error); }
+    }
+
+    document.addEventListener('fullscreenchange', function() {
+        if (document.fullscreenElement) document.exitFullscreen().catch(e => console.log("Fullscreen exit error:", e));
+    });
+
+    // 🚀 App Start
+    init();
+</script>
+</body>
+</html>
