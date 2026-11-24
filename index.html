@@ -10,7 +10,7 @@
         html {
             scroll-snap-type: y proximity;
             scroll-behavior: smooth;
-            scroll-padding-top: 100px;
+            scroll-padding-top: 170px; /* फॉलबैक — JS इसे override करेगा */
             scroll-padding-bottom: 140px;
             overscroll-behavior-y: contain;
             -webkit-overflow-scrolling: touch;
@@ -58,7 +58,6 @@
             50%      { filter: drop-shadow(0 0 8px rgba(244,67,54,0.7)); }
         }
 
-        /* ✅ नया: Ad के लिए अलग container - पूरा दिखेगा */
         .top-ad-container {
             background: #1a241a;
             padding: 8px 10px;
@@ -107,7 +106,7 @@
             gap: 10px;
             background: #1a241a;
             position: sticky;
-            top: 110px; /* ✅ अपडेट: header(50px) + ad(60px) = 110px */
+            top: 110px; 
             z-index: 90;
             overscroll-behavior-x: contain;
         }
@@ -120,7 +119,11 @@
         .category-btn.active { background: #c62828; }
         .category-btn:hover { background: #f9a825; color: #000; }
         
-        .video-list { padding: 10px; }
+        /* ✅ बदलाव: margin-top हटाया — JS इसे Categories की height के हिसाब से सेट करेगा */
+        .video-list { 
+            padding: 10px; 
+            margin-top: 0;
+        }
         
         .video-card {
             background: #1a241a; border-radius: 12px; margin-bottom: 15px;
@@ -510,7 +513,7 @@
         </div>
     </div>
     
-    <!-- ✅ Adsterra Ad: Header के ठीक नीचे अलग row में (पूरा दिखेगा) -->
+    <!-- Adsterra Ad: Header के ठीक नीचे अलग row में -->
     <div class="top-ad-container">
         <div class="ad-frame">
             <script>
@@ -1625,7 +1628,32 @@
                 scheduleSync(300);
             }, 500); 
         });
-        
+
+        // ✅ सुधारा हुआ फंक्शन: सिर्फ Categories की height के बराबर margin-top देगा (खाली जगह खत्म)
+        // और scroll-padding-total सभी sticky bars की कुल height के बराबर सेट करेगा (snap सही काम करेगा)
+        function fixPlayerOffset() {
+            const header = document.getElementById('mainHeader');
+            const ad = document.querySelector('.top-ad-container');
+            const categories = document.getElementById('mainCategories');
+            const videoList = document.getElementById('videoList');
+
+            if (header && ad && categories && videoList) {
+                // सभी sticky bars की कुल height (scroll snap के लिए)
+                const totalStickyHeight = header.offsetHeight + ad.offsetHeight + categories.offsetHeight;
+                document.documentElement.style.scrollPaddingTop = (totalStickyHeight + 10) + 'px';
+                
+                // ✅ सिर्फ Categories की height के बराबर margin-top (video-list को categories के ठीक नीचे लाने के लिए)
+                videoList.style.marginTop = (categories.offsetHeight + 10) + 'px';
+            }
+        }
+
+        // पेज लोड होने पर और Ad लोड होने के बाद (1s, 3s) दोबारा चेक करेगा
+        window.addEventListener('load', fixPlayerOffset);
+        setTimeout(fixPlayerOffset, 500);
+        setTimeout(fixPlayerOffset, 1000);
+        setTimeout(fixPlayerOffset, 3000);
+        window.addEventListener('resize', fixPlayerOffset);
+
         renderDynamicButtons();
         if (!localStorage.getItem('userName')) localStorage.setItem('userName', 'उपयोगकर्ता');
         const initialHash = window.location.hash.replace('#', '') || 'home'; 
